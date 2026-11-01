@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.gcp.GCPProperties;
 import org.apache.iceberg.io.CloseableGroup;
+import org.apache.iceberg.io.StorageCredential;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.rest.ErrorHandlers;
 import org.apache.iceberg.rest.HTTPClient;
@@ -73,11 +74,7 @@ public class OAuth2RefreshCredentialsHandler
             .collect(Collectors.toList());
 
     Preconditions.checkState(!gcsCredentials.isEmpty(), "Invalid GCS Credentials: empty");
-    Preconditions.checkState(
-        gcsCredentials.size() == 1,
-        "Invalid GCS Credentials: only one GCS credential should exist");
-
-    Credential gcsCredential = gcsCredentials.get(0);
+    Credential gcsCredential = selectCredential(gcsCredentials);
     checkCredential(gcsCredential, GCPProperties.GCS_OAUTH2_TOKEN);
     checkCredential(gcsCredential, GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT);
     String token = gcsCredential.config().get(GCPProperties.GCS_OAUTH2_TOKEN);
@@ -94,6 +91,28 @@ public class OAuth2RefreshCredentialsHandler
             LoadCredentialsResponse.class,
             Map.of(),
             ErrorHandlers.defaultErrorHandler());
+  }
+
+  private Credential selectCredential(List<Credential> gcsCredentials) {
+    String storagePrefix = properties.get(StorageCredential.PREFIX_PROPERTY);
+    if (storagePrefix == null) {
+      Preconditions.checkState(
+          gcsCredentials.size() == 1,
+          "Invalid GCS Credentials: only one GCS credential should exist");
+      return gcsCredentials.get(0);
+    }
+
+    Credential selected = null;
+    for (Credential candidate : gcsCredentials) {
+      if (StorageCredential.covers(candidate.prefix(), storagePrefix)
+          && (selected == null || candidate.prefix().length() > selected.prefix().length())) {
+        selected = candidate;
+      }
+    }
+
+    Preconditions.checkState(
+        selected != null, "Invalid GCS Credentials: no credential for prefix %s", storagePrefix);
+    return selected;
   }
 
   private void checkCredential(Credential gcsCredential, String gcsOauth2Token) {

@@ -389,7 +389,7 @@ public class S3FileIO
     String matchingPrefix = ROOT_PREFIX;
 
     for (String storagePrefix : clientByPrefix().keySet()) {
-      if (storagePath.startsWith(storagePrefix)
+      if (StorageCredential.covers(storagePrefix, storagePath)
           && storagePrefix.length() > matchingPrefix.length()) {
         matchingPrefix = storagePrefix;
       }
@@ -419,6 +419,7 @@ public class S3FileIO
                         ImmutableMap.<String, String>builder()
                             .putAll(properties)
                             .putAll(storageCredential.config())
+                            .put(StorageCredential.PREFIX_PROPERTY, storageCredential.prefix())
                             .buildKeepingLast();
 
                     localClientByPrefix.put(

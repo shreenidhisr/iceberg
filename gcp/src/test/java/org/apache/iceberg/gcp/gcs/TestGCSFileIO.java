@@ -378,6 +378,9 @@ public class TestGCSFileIO {
       assertThat(fileIO.client("gs://custom-uri/table1"))
           .isNotSameAs(fileIO.client("gs://custom-uri/1/table1"))
           .isNotSameAs(fileIO.client("gs://custom-uri/2/table1"));
+      assertThat(fileIO.client("gs://custom-uri/10/file.parquet"))
+          .isSameAs(fileIO.client("gs://custom-uri/table1"))
+          .isNotSameAs(fileIO.client("gs://custom-uri/1/table1"));
 
       assertThat(fileIO.client("gs://custom-uri/1/table1").getOptions().getCredentials())
           .isInstanceOf(OAuth2Credentials.class)
