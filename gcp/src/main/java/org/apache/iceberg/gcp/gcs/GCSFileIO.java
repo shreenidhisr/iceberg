@@ -147,7 +147,7 @@ public class GCSFileIO implements DelegateFileIO, SupportsStorageCredentials {
     String matchingPrefix = ROOT_STORAGE_PREFIX;
 
     for (String storagePrefix : storageByPrefix().keySet()) {
-      if (storagePath.startsWith(storagePrefix)
+      if (StorageCredential.covers(storagePrefix, storagePath)
           && storagePrefix.length() > matchingPrefix.length()) {
         matchingPrefix = storagePrefix;
       }
@@ -201,6 +201,7 @@ public class GCSFileIO implements DelegateFileIO, SupportsStorageCredentials {
                         ImmutableMap.<String, String>builder()
                             .putAll(properties)
                             .putAll(storageCredential.config())
+                            .put(StorageCredential.PREFIX_PROPERTY, storageCredential.prefix())
                             .buildKeepingLast();
 
                     localStorageByPrefix.put(

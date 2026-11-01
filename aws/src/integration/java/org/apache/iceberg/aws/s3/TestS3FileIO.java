@@ -901,6 +901,10 @@ public class TestS3FileIO {
     // there are separate credentials configured for each storage path, so there should be separate
     // S3 client instances
     assertThat(fileIO.client("s3://custom-uri/1")).isNotSameAs(fileIO.client("s3://custom-uri/2"));
+    // A sibling path that only shares a string prefix must not use that credential.
+    assertThat(fileIO.client("s3://custom-uri/10/file.parquet"))
+        .isSameAs(fileIO.client("s3://my-bucket/table1"))
+        .isNotSameAs(fileIO.client("s3://custom-uri/1"));
     ObjectAssert<S3FileIOProperties> s3FileIOProperties1 =
         assertThat(fileIO.clientForStoragePath("s3://custom-uri/1/table1").s3FileIOProperties());
     s3FileIOProperties1

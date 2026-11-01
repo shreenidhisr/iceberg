@@ -31,6 +31,35 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 public class TestStorageCredential {
   @Test
+  public void locationPrefixCoversItsOwnPathAndChildren() {
+    assertThat(StorageCredential.covers("s3://bucket/orders", "s3://bucket/orders")).isTrue();
+    assertThat(StorageCredential.covers("s3://bucket/orders", "s3://bucket/orders/")).isTrue();
+    assertThat(StorageCredential.covers("s3://bucket/orders/", "s3://bucket/orders")).isTrue();
+    assertThat(
+            StorageCredential.covers("s3://bucket/orders", "s3://bucket/orders/data/file.parquet"))
+        .isTrue();
+  }
+
+  @Test
+  public void locationPrefixDoesNotCoverSibling() {
+    assertThat(
+            StorageCredential.covers("s3://bucket/orders", "s3://bucket/orders_copy/file.parquet"))
+        .isFalse();
+    assertThat(
+            StorageCredential.covers("s3://bucket/orders/", "s3://bucket/orders-backup/metadata"))
+        .isFalse();
+    assertThat(StorageCredential.covers("gs://bucket/ns/table", "gs://bucket/ns/table2/data"))
+        .isFalse();
+  }
+
+  @Test
+  public void schemePrefixCoversLocationsThatStartWithIt() {
+    assertThat(StorageCredential.covers("s3", "s3://bucket/orders/file.parquet")).isTrue();
+    assertThat(StorageCredential.covers("s3", "s3a://bucket/orders/file.parquet")).isTrue();
+    assertThat(StorageCredential.covers("gs", "s3://bucket/orders")).isFalse();
+  }
+
+  @Test
   public void invalidPrefix() {
     assertThatThrownBy(() -> StorageCredential.create("", Map.of()))
         .isInstanceOf(IllegalArgumentException.class)

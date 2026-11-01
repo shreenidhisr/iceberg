@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.TestHelpers;
+import org.apache.iceberg.aws.AwsClientProperties;
 import org.apache.iceberg.aws.AwsProperties;
 import org.apache.iceberg.io.StorageCredential;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
@@ -343,6 +344,47 @@ public class TestS3FileIOCredentialRefresh {
       try (S3FileIO deserialized = TestHelpers.KryoHelpers.roundTripSerialize(fileIO)) {
         assertThat(deserialized.credentials()).isEqualTo(fileIO.credentials());
       }
+    }
+  }
+
+  @Test
+  public void siblingPrefixDoesNotUseTableCredential() {
+    StorageCredential credential =
+        StorageCredential.create(
+            "s3://bucket/orders",
+            ImmutableMap.of(
+                S3FileIOProperties.ACCESS_KEY_ID,
+                "tableKey",
+                S3FileIOProperties.SECRET_ACCESS_KEY,
+                "tableSecret",
+                S3FileIOProperties.SESSION_TOKEN,
+                "tableToken"));
+
+    try (S3FileIO fileIO = new S3FileIO()) {
+      fileIO.setCredentials(List.of(credential));
+      fileIO.initialize(
+          ImmutableMap.of(
+              AwsClientProperties.CLIENT_REGION,
+              "us-east-1",
+              S3FileIOProperties.ACCESS_KEY_ID,
+              "rootKey",
+              S3FileIOProperties.SECRET_ACCESS_KEY,
+              "rootSecret",
+              S3FileIOProperties.SESSION_TOKEN,
+              "rootToken"));
+
+      assertThat(
+              fileIO
+                  .clientForStoragePath("s3://bucket/orders/data/file.parquet")
+                  .s3FileIOProperties()
+                  .accessKeyId())
+          .isEqualTo("tableKey");
+      assertThat(
+              fileIO
+                  .clientForStoragePath("s3://bucket/orders_copy/data/file.parquet")
+                  .s3FileIOProperties()
+                  .accessKeyId())
+          .isEqualTo("rootKey");
     }
   }
 }

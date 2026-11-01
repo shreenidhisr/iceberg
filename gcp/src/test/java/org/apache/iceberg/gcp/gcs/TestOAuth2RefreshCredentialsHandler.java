@@ -30,6 +30,7 @@ import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.RESTException;
 import org.apache.iceberg.gcp.GCPProperties;
+import org.apache.iceberg.io.StorageCredential;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.rest.HttpMethod;
 import org.apache.iceberg.rest.RESTCatalogProperties;
@@ -223,6 +224,52 @@ public class TestOAuth2RefreshCredentialsHandler {
     assertThat(refreshedToken).isNotSameAs(accessToken);
 
     mockServer.verify(mockRequest, VerificationTimes.exactly(2));
+  }
+
+  @Test
+  public void multipleGcsCredentialsSelectTheCoveringPrefix() {
+    HttpRequest mockRequest =
+        HttpRequest.request("/v1/credentials").withMethod(HttpMethod.GET.name());
+
+    Credential sibling =
+        ImmutableCredential.builder()
+            .prefix("gs://my-custom-prefix/xyz/long-prefix")
+            .config(
+                ImmutableMap.of(
+                    GCPProperties.GCS_OAUTH2_TOKEN,
+                    "siblingToken",
+                    GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT,
+                    Long.toString(Instant.now().plus(2, ChronoUnit.MINUTES).toEpochMilli())))
+            .build();
+    Credential matching =
+        ImmutableCredential.builder()
+            .prefix("gs://my-custom-prefix/xyz")
+            .config(
+                ImmutableMap.of(
+                    GCPProperties.GCS_OAUTH2_TOKEN,
+                    "matchingToken",
+                    GCPProperties.GCS_OAUTH2_TOKEN_EXPIRES_AT,
+                    Long.toString(Instant.now().plus(3, ChronoUnit.MINUTES).toEpochMilli())))
+            .build();
+    HttpResponse mockResponse =
+        HttpResponse.response(
+                LoadCredentialsResponseParser.toJson(
+                    ImmutableLoadCredentialsResponse.builder()
+                        .addCredentials(sibling, matching)
+                        .build()))
+            .withStatusCode(200);
+    mockServer.when(mockRequest).respond(mockResponse);
+
+    OAuth2RefreshCredentialsHandler handler =
+        OAuth2RefreshCredentialsHandler.create(
+            ImmutableMap.<String, String>builder()
+                .putAll(PROPERTIES)
+                .put(
+                    StorageCredential.PREFIX_PROPERTY,
+                    "gs://my-custom-prefix/xyz/data/file.parquet")
+                .build());
+
+    assertThat(handler.refreshAccessToken().getTokenValue()).isEqualTo("matchingToken");
   }
 
   @Test

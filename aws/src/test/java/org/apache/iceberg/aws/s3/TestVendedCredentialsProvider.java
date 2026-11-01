@@ -29,6 +29,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.exceptions.RESTException;
+import org.apache.iceberg.io.StorageCredential;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.rest.HttpMethod;
 import org.apache.iceberg.rest.RESTCatalogProperties;
@@ -251,6 +252,54 @@ public class TestVendedCredentialsProvider {
     }
 
     mockServer.verify(mockRequest, VerificationTimes.exactly(2));
+  }
+
+  @Test
+  public void multipleS3CredentialsSelectTheCoveringPrefix() {
+    HttpRequest mockRequest = request("/v1/credentials").withMethod(HttpMethod.GET.name());
+    Credential sibling =
+        ImmutableCredential.builder()
+            .prefix("s3://custom-uri/longest-prefix")
+            .config(
+                ImmutableMap.of(
+                    S3FileIOProperties.ACCESS_KEY_ID,
+                    "siblingAccessKey",
+                    S3FileIOProperties.SECRET_ACCESS_KEY,
+                    "siblingSecretAccessKey",
+                    S3FileIOProperties.SESSION_TOKEN,
+                    "siblingSessionToken",
+                    S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS,
+                    Long.toString(Instant.now().plus(2, ChronoUnit.HOURS).toEpochMilli())))
+            .build();
+    Credential matching =
+        ImmutableCredential.builder()
+            .prefix("s3://custom-uri/long")
+            .config(
+                ImmutableMap.of(
+                    S3FileIOProperties.ACCESS_KEY_ID,
+                    "matchingAccessKey",
+                    S3FileIOProperties.SECRET_ACCESS_KEY,
+                    "matchingSecretAccessKey",
+                    S3FileIOProperties.SESSION_TOKEN,
+                    "matchingSessionToken",
+                    S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS,
+                    Long.toString(Instant.now().plus(3, ChronoUnit.HOURS).toEpochMilli())))
+            .build();
+    LoadCredentialsResponse response =
+        ImmutableLoadCredentialsResponse.builder().addCredentials(sibling, matching).build();
+
+    HttpResponse mockResponse =
+        response(LoadCredentialsResponseParser.toJson(response)).withStatusCode(200);
+    mockServer.when(mockRequest).respond(mockResponse);
+
+    try (VendedCredentialsProvider provider =
+        VendedCredentialsProvider.create(
+            ImmutableMap.<String, String>builder()
+                .putAll(PROPERTIES)
+                .put(StorageCredential.PREFIX_PROPERTY, "s3://custom-uri/long/data/file.parquet")
+                .build())) {
+      verifyCredentials(provider.resolveCredentials(), matching);
+    }
   }
 
   @Test

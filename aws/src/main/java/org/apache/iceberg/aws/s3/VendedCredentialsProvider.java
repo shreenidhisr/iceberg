@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.iceberg.CatalogProperties;
+import org.apache.iceberg.io.StorageCredential;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.base.Strings;
 import org.apache.iceberg.rest.ErrorHandlers;
@@ -156,10 +157,7 @@ public class VendedCredentialsProvider implements AwsCredentialsProvider, SdkAut
             .collect(Collectors.toList());
 
     Preconditions.checkState(!s3Credentials.isEmpty(), "Invalid S3 Credentials: empty");
-    Preconditions.checkState(
-        s3Credentials.size() == 1, "Invalid S3 Credentials: only one S3 credential should exist");
-
-    Credential s3Credential = s3Credentials.get(0);
+    Credential s3Credential = selectCredential(s3Credentials);
     checkCredential(s3Credential, S3FileIOProperties.ACCESS_KEY_ID);
     checkCredential(s3Credential, S3FileIOProperties.SECRET_ACCESS_KEY);
     checkCredential(s3Credential, S3FileIOProperties.SESSION_TOKEN);
@@ -184,6 +182,27 @@ public class VendedCredentialsProvider implements AwsCredentialsProvider, SdkAut
         .staleTime(expiresAt)
         .prefetchTime(prefetchAt)
         .build();
+  }
+
+  private Credential selectCredential(List<Credential> s3Credentials) {
+    String storagePrefix = properties.get(StorageCredential.PREFIX_PROPERTY);
+    if (storagePrefix == null) {
+      Preconditions.checkState(
+          s3Credentials.size() == 1, "Invalid S3 Credentials: only one S3 credential should exist");
+      return s3Credentials.get(0);
+    }
+
+    Credential selected = null;
+    for (Credential candidate : s3Credentials) {
+      if (StorageCredential.covers(candidate.prefix(), storagePrefix)
+          && (selected == null || candidate.prefix().length() > selected.prefix().length())) {
+        selected = candidate;
+      }
+    }
+
+    Preconditions.checkState(
+        selected != null, "Invalid S3 Credentials: no credential for prefix %s", storagePrefix);
+    return selected;
   }
 
   private void checkCredential(Credential credential, String property) {
